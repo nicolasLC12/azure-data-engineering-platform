@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Azure Data Engineering Platform</title>
+
+    <link rel="stylesheet" href="/static/css/styles.css">
+</head>
+
+<body>
+
+    <header class="header">
+
+        <div class="header-content">
+
+            <h1>Azure Data Engineering Platform</h1>
+
+            <p>
+                Plataforma de ingesta, procesamiento y monitoreo de datos
+            </p>
+
+        </div>
+
+    </header>
+
+
+    <main class="container">
+
+
+        <section class="cards">
+
+            <div class="card-summary">
+
+                <div class="label">
+                    Total de cargas
+                </div>
+
+                <div class="value" id="totalCargas">
+                    0
+                </div>
+
+            </div>
+
+
+            <div class="card-summary">
+
+                <div class="label">
+                    Procesados
+                </div>
+
+                <div class="value" id="totalProcesados">
+                    0
+                </div>
+
+            </div>
+
+
+            <div class="card-summary">
+
+                <div class="label">
+                    Procesando
+                </div>
+
+                <div class="value" id="totalProcesando">
+                    0
+                </div>
+
+            </div>
+
+
+            <div class="card-summary">
+
+                <div class="label">
+                    Errores
+                </div>
+
+                <div class="value" id="totalErrores">
+                    0
+                </div>
+
+                <div class="card-detail">
+                    Validación:
+                    <span id="erroresValidacion">0</span>
+                    |
+                    ADF:
+                    <span id="erroresAdf">0</span>
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <section class="panel">
+
+            <h2>Ingesta de archivos</h2>
+
+            <p>
+                Selecciona un archivo para enviarlo a Azure Blob Storage.
+            </p>
+
+            <div class="upload-area">
+
+                <input type="file" id="archivo" accept=".csv">
+
+                <button id="btnSubir" onclick="subirArchivo()">
+                    Subir archivo
+                </button>
+
+            </div>
+
+            <div class="message" id="mensaje"></div>
+
+        </section>
+
+
+        <section class="panel">
+
+            <h2>Historial de ingesta</h2>
+
+            <div class="table-container">
+
+                <table>
+
+                    <thead>
+
+                        <tr>
+                            <th>Archivo</th>
+                            <th>Tipo</th>
+                            <th>Tamaño</th>
+                            <th>Fecha</th>
+                            <th>Estado</th>
+                            <th>Estado ADF</th>
+                            <th>Detalle</th>
+                        </tr>
+
+                    </thead>
+
+                    <tbody id="tablaCargas"></tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+
+    </main>
+
+
+    <script>
+
+        function formatearFecha(fecha) {
+
+            const date = new Date(fecha);
+
+            return date.toLocaleString("es-PE");
+        }
+
+
+        async function cargarHistorial() {
+
+            const response = await fetch("/cargas");
+
+            const data = await response.json();
+
+            const tabla =
+                document.getElementById("tablaCargas");
+
+
+            tabla.innerHTML = "";
+
+
+            let cargados = 0;
+
+
+            let erroresValidacion = 0;
+            let erroresAdf = 0;
+
+            let procesados = 0;
+            let procesando = 0;
+
+
+            data.cargas.forEach(carga => {
+
+                if (carga.estado === "CARGADO") {
+                    cargados++;
+                }
+
+                if (carga.estado === "ERROR") {
+                    erroresValidacion++;
+                }
+                if (carga.estado_adf === "ERROR") {
+                    erroresAdf++;
+                }
+                if (carga.estado_adf === "PROCESADO") {
+                    procesados++;
+                }
+
+                if (carga.estado_adf === "PROCESANDO") {
+                    procesando++;
+                }
+
+
+                const claseEstado =
+                    carga.estado === "ERROR"
+                        ? "status-error"
+                        : "status-cargado";
+
+
+                const estadoAdf = carga.estado_adf || "";
+
+                let claseEstadoAdf = "status-adf-neutral";
+
+                switch (estadoAdf) {
+                    case "PROCESANDO":
+                        claseEstadoAdf = "status-adf-procesando";
+                        break;
+                    case "PROCESADO":
+                        claseEstadoAdf = "status-adf-procesado";
+                        break;
+                    case "ERROR":
+                        claseEstadoAdf = "status-adf-error";
+                        break;
+                    case "CANCELADO":
+                        claseEstadoAdf = "status-adf-cancelado";
+                        break;
+
+                    default:
+                        claseEstadoAdf = "status-adf-neutral";
+                }
+
+                tabla.innerHTML += `
+
+            <tr>
+
+                <td>
+                    ${carga.archivo}
+                </td>
+
+                <td>
+                    ${carga.tipo}
+                </td>
+
+                <td>
+                    ${carga.tamano_bytes} bytes
+                </td>
+
+                <td>
+                    ${formatearFecha(carga.fecha_carga)}
+                </td>
+
+                <td>
+
+                    <span class="status ${claseEstado}">
+
+                        ${carga.estado}
+
+                    </span>
+
+                </td>
+
+                <td>
+                    <span class="${claseEstadoAdf}">
+                        ${estadoAdf}
+                    </span>
+                </td>
+                
+                <td>
+                    ${carga.detalle || "-"}
+                </td>
+
+            </tr>
+
+        `;
+
+            });
+
+            const totalErrores = erroresValidacion + erroresAdf;
+
+
+            document.getElementById(
+                "totalCargas"
+            ).innerText = data.total;
+
+            document.getElementById(
+                "totalProcesados"
+            ).innerText = procesados;
+
+            document.getElementById(
+                "totalProcesando"
+            ).innerText = procesando;
+
+            document.getElementById(
+                "totalErrores"
+            ).innerText = totalErrores;
+            document.getElementById(
+            "erroresValidacion"
+            ).innerText = erroresValidacion;
+
+            document.getElementById(
+                "erroresAdf"
+            ).innerText = erroresAdf;
+
+        }
+
+
+        async function subirArchivo() {
+
+            const input =
+                document.getElementById("archivo");
+
+            const boton =
+                document.getElementById("btnSubir");
+
+            const mensaje =
+                document.getElementById("mensaje");
+
+
+            if (!input.files.length) {
+
+                mensaje.innerText =
+                    "Seleccione un archivo.";
+
+                return;
+            }
+
+
+            const formData =
+                new FormData();
+
+
+            formData.append(
+                "file",
+                input.files[0]
+            );
+
+
+            boton.disabled = true;
+
+            boton.innerText =
+                "Subiendo...";
+
+
+            try {
+
+                const response =
+                    await fetch("/upload", {
+
+                        method: "POST",
+
+                        body: formData
+                    });
+
+
+                const resultado =
+                    await response.json();
+
+
+                if (!response.ok) {
+
+                    if (
+                        typeof resultado.detail == "object" && resultado.detail.errores
+                    ) {
+                        mensaje.innerHTML = `
+                    <strong>${resultado.detail.mensaje}</strong>
+                    <br>
+                    ${resultado.detail.errores.join("<br>")}
+                    `;
+                    }
+                    else {
+                        mensaje.innerText =
+                            resultado.detail || "Error al procesar el archivo";
+                    }
+
+                    await cargarHistorial();
+                    return;
+                }
+
+                mensaje.innerText =
+                    `Archivo ${resultado.archivo} cargado correctamente.`;
+
+
+                input.value = "";
+
+
+                await cargarHistorial();
+
+
+            } catch (error) {
+
+                mensaje.innerText =
+                    "Error al comunicarse con la API.";
+
+            } finally {
+
+                boton.disabled = false;
+
+                boton.innerText =
+                    "Subir archivo";
+            }
+
+        }
+
+        async function actualizarEstadosADF() {
+            try {
+                await fetch("/cargas/actualizar-estados")
+
+                await cargarHistorial();
+            }
+            catch (error) {
+                console.error(
+                    "Error actualizando estados ADF", error
+                );
+            }
+        }
+
+        cargarHistorial();
+        setInterval(
+            actualizarEstadosADF, 10000
+        )
+
+    </script>
+
+
+</body>
+
+</html>
