@@ -22,6 +22,9 @@ __pycache__/
 *.log
 *.tmp
 
+# Datos generados
+data/cargas.json
+
 # Sistema operativo
 .DS_Store
 Thumbs.db

@@ -89,3 +89,56 @@ def subir_archivo_normalizado(
     )
 
     return ruta_blod
+
+
+def mover_archivo_a_procesados(nombre_archivo: str):
+
+    container_client = blod_service_client.get_container_client(CONTAINER_NAME)
+
+    ruta_origen = (
+        f"standardized/ventas/{nombre_archivo}"
+    )
+
+    ruta_destino = (
+        f"processed/ventas/{nombre_archivo}"
+    )
+
+    blod_origen = container_client.get_blob_client(ruta_origen)
+
+    contenido = blod_origen.download_blob().readall()
+
+    blod_destino = container_client.get_blob_client(ruta_destino)
+
+    blod_destino.upload_blob(contenido, overwrite=True)
+
+    blod_origen.delete_blob()
+
+    return ruta_destino
+
+
+def subir_archivo_rechazado(nombre_archivo: str, contenido: bytes):
+
+    container_client = blod_service_client.get_container_client(CONTAINER_NAME)
+
+    extension = Path(nombre_archivo).suffix.lower()
+
+    match extension:
+
+        case ".csv":
+            carpeta = "csv"
+        case ".xlsx":
+            carpeta = "excel"
+        case ".json":
+            carpeta = "json"
+        case ".txt":
+            carpeta = "txt"
+        case _:
+            carpeta = "otros"
+
+    ruta_rechazo = (f"rejected/{carpeta}/{nombre_archivo}")
+
+    blob_client = container_client.get_blob_client(ruta_rechazo)
+
+    blob_client.upload_blob(contenido, overwrite=True)
+
+    return ruta_rechazo

@@ -1,7 +1,5 @@
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from app.services.blob_service import (
-    subir_archivo, subir_archivo_normalizado
-)
+
 from app.services.validator import (
     validar_archivo, normalizar_archivo
 )
@@ -9,6 +7,9 @@ from app.services.adf_service import (
     ejecutar_pipeline,
     consultar_estado_pipeline
 )
+from app.services.blob_service import (subir_archivo, subir_archivo_normalizado, mover_archivo_a_procesados,
+                                       subir_archivo_rechazado)
+from app.services.sql_service import (registrar_historial_sql, actualizar_historial_sql)
 
 import json
 from datetime import datetime
@@ -16,7 +17,9 @@ from pathlib import Path
 from fastapi.templating import Jinja2Templates
 from fastapi.requests import Request
 from fastapi.staticfiles import StaticFiles
+import logging
 
+logger = logging.getLogger(__name__)
 
 def traducir_estado_adf(estado_azure: str):
 
@@ -110,14 +113,43 @@ def actualizar_estados_adf():
                 resultado["estado"]
             )
 
+            if nuevo_estado == "PROCESADO":
+
+                archivo_normalizado = carga.get(
+                    "archivo_normalizado"
+                )
+
+                if archivo_normalizado:
+
+                    ruta_procesado = mover_archivo_a_procesados(
+                        archivo_normalizado
+                    )
+
+                    carga["ruta_procesado"] = ruta_procesado
+
+
             carga["estado_adf"] = nuevo_estado
+
+            actualizar_historial_sql(
+                adf_run_id=run_id,
+                estado_adf=nuevo_estado,
+                ruta_procesado=carga.get(
+                    "ruta_procesado",
+                    ""
+                ),
+                detalle=carga.get(
+                    "detalle_adf",
+                    ""
+                )
+            )
 
             actualizados += 1
         except Exception as error:
 
             carga["estado_adf"] = "ERROR"
-
             carga["detalle_adf"] = str(error)
+
+            logger.exception("Error actualizando estado ADF/SQL")
 
     with open(
         ARCHIVO_LOG, "w", encoding="utf-8"
@@ -138,7 +170,8 @@ def actualizar_estados_adf():
 ARCHIVO_LOG = Path("data/cargas.json")
 
 def registar_carga(nombre: str, tamano: int, estado: str, detalle: str = "",
-                   adf_run_id: str = "", estado_adf: str = ""):
+                   adf_run_id: str = "", estado_adf: str = "", archivo_normalizado: str = "",
+                   ruta_rechazo: str = ""):
     with open(ARCHIVO_LOG, "r", encoding="utf-8") as archivos:
         cargas = json.load(archivos)
 
@@ -150,11 +183,27 @@ def registar_carga(nombre: str, tamano: int, estado: str, detalle: str = "",
         "estado": estado,
         "detalle": detalle,
         "adf_run_id": adf_run_id,
-        "estado_adf": estado_adf
+        "estado_adf": estado_adf,
+        "archivo_normalizado": archivo_normalizado,
+        "ruta_rechazo": ruta_rechazo
         })
 
         with open(ARCHIVO_LOG, "w", encoding="utf-8") as archivo:
             json.dump(cargas, archivo, indent=4, ensure_ascii=False)
+
+    registrar_historial_sql(
+        archivo=nombre,
+        tipo=nombre.split(".")[-1].upper(),
+        tamano_bytes=tamano,
+        fecha_carga=datetime.now(),
+        estado=estado,
+        detalle=detalle,
+        adf_run_id=adf_run_id,
+        estado_adf=estado_adf,
+        archivo_normalizado=archivo_normalizado,
+        ruta_procesado="",
+        ruta_rechazo=ruta_rechazo
+    )
 
 
 @app.post("/upload")
@@ -185,13 +234,15 @@ async def upload(file: UploadFile = File(...)):
 
     if not resultado_validacion["valido"]:
 
+        ruta_rechazo = subir_archivo_rechazado(nombre_archivo=nombre, contenido=contenido)
+
         registar_carga(
             nombre=nombre,
             tamano=len(contenido),
             estado="ERROR",
             detalle=" | ".join(
                 resultado_validacion["errores"]
-            )
+            ), ruta_rechazo=ruta_rechazo
         )
         raise HTTPException(
             status_code=400,
@@ -221,7 +272,7 @@ async def upload(file: UploadFile = File(...)):
     ).name
 
     run_id = ejecutar_pipeline(
-        nombre_normalizado
+        nombre_normalizado  
     )
     
     registar_carga(
@@ -232,7 +283,7 @@ async def upload(file: UploadFile = File(...)):
             f"Archivo validado y enviado a ADF"
             f"Filas: {resultado_validacion['filas']}"
         ),
-        adf_run_id=run_id, estado_adf="PROCESANDO"
+        adf_run_id=run_id, estado_adf="PROCESANDO", archivo_normalizado=nombre_normalizado
     )
     
 
@@ -247,5 +298,6 @@ async def upload(file: UploadFile = File(...)):
         "archivo_adf": nombre_normalizado,
         "adf_run_id": run_id,
         "estado_Adf": "PROCESANDO",
+        "archivo_normalizado": nombre_normalizado,
         "destino": "Azure Blob Storage + Azure Data Factory"
     }
