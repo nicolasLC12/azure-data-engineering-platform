@@ -121,6 +121,39 @@
 
             <h2>Historial de ingesta</h2>
 
+            <div class="historial-filtros">
+
+                <div class="filtro-grupo filtro-buscador">
+                    <label for="filtroArchivo">Buscar archivo</label>
+                    <input type="text" id="filtroArchivo" placeholder="Ej. ventas_2026.csv" autocomplete="off">
+                </div>
+
+                <div class="filtro-grupo">
+                    <label for="filtroEstado">Estado</label>
+                    <select id="filtroEstado">
+                        <option value="">Todos</option>
+                        <option value="CARGADO">Cargado</option>
+                        <option value="ERROR">Error</option>
+                    </select>
+                </div>
+
+                <div class="filtro-grupo">
+                    <label for="filtroEstadoADF">Estado ADF</label>
+                    <select id="filtroEstadoADF">
+                        <option value="">Todos</option>
+                        <option value="PROCESANDO">Procesando</option>
+                        <option value="PROCESADO">Procesado</option>
+                        <option value="ERROR">Error</option>
+                        <option value="CANCELADO">Cancelado</option>
+                    </select>
+                </div>
+
+                <button type="button" id="btnLimpiarFiltros" class="btn-limpiar-filtros">
+                    Limpiar filtros
+                </button>
+
+            </div>
+
             <div class="table-container">
 
                 <table>
@@ -235,7 +268,11 @@
 
                 tabla.innerHTML += `
 
-            <tr>
+            <tr
+                data-archivo="${carga.archivo || ''}"
+                data-estado="${carga.estado || ''}"
+                data-estado-adf="${carga.estado_adf || ''}"
+            >
 
                 <td>
                     ${carga.archivo}
@@ -298,7 +335,7 @@
                 "totalErrores"
             ).innerText = totalErrores;
             document.getElementById(
-            "erroresValidacion"
+                "erroresValidacion"
             ).innerText = erroresValidacion;
 
             document.getElementById(
@@ -422,6 +459,112 @@
         setInterval(
             actualizarEstadosADF, 10000
         )
+
+
+        const filtroArchivo = document.getElementById("filtroArchivo");
+        const filtroEstado = document.getElementById("filtroEstado");
+        const filtroEstadoADF = document.getElementById("filtroEstadoADF");
+        const btnLimpiarFiltros = document.getElementById("btnLimpiarFiltros");
+        const tablaCargas = document.getElementById("tablaCargas");
+
+
+        function aplicarFiltrosHistorial() {
+
+            const textoArchivo =
+                filtroArchivo.value.trim().toLowerCase();
+
+            const estadoSeleccionado =
+                filtroEstado.value.trim().toUpperCase();
+
+            const estadoADFSeleccionado =
+                filtroEstadoADF.value.trim().toUpperCase();
+
+            const filas = tablaCargas.querySelectorAll("tr");
+
+
+            filas.forEach(fila => {
+
+                const archivo =
+                    (fila.dataset.archivo || "").toLowerCase();
+
+                const estado =
+                    (fila.dataset.estado || "").toUpperCase();
+
+                const estadoADF =
+                    (fila.dataset.estadoAdf || "").toUpperCase();
+
+
+                const coincideArchivo =
+                    textoArchivo === "" ||
+                    archivo.includes(textoArchivo);
+
+
+                const coincideEstado =
+                    estadoSeleccionado === "" ||
+                    estado === estadoSeleccionado;
+
+
+                const coincideEstadoADF =
+                    estadoADFSeleccionado === "" ||
+                    estadoADF === estadoADFSeleccionado;
+
+
+                if (
+                    coincideArchivo &&
+                    coincideEstado &&
+                    coincideEstadoADF
+                ) {
+
+                    fila.style.display = "";
+
+                } else {
+
+                    fila.style.display = "none";
+
+                }
+
+            });
+
+        }
+
+        filtroArchivo.addEventListener(
+            "input",
+            aplicarFiltrosHistorial
+        );
+
+        filtroEstado.addEventListener(
+            "change",
+            aplicarFiltrosHistorial
+        );
+
+        filtroEstadoADF.addEventListener(
+            "change",
+            aplicarFiltrosHistorial
+        );
+
+        btnLimpiarFiltros.addEventListener(
+            "click",
+            () => {
+
+                filtroArchivo.value = "";
+                filtroEstado.value = "";
+                filtroEstadoADF.value = "";
+
+                aplicarFiltrosHistorial();
+
+            }
+        );
+
+        const observadorHistorial = new MutationObserver(
+            aplicarFiltrosHistorial
+        );
+
+        observadorHistorial.observe(
+            tablaCargas,
+            {
+                childList: true
+            }
+        );
 
     </script>
 
